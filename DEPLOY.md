@@ -1,5 +1,28 @@
 # Деплой на сервер
 
+## Вариант: распаковка vendor.zip (без composer на сервере)
+
+Если вы выкладываете уже собранный `vendor` архивом:
+
+```bash
+# 1. Удалить старую папку vendor
+rm -rf vendor
+
+# 2. Распаковать архив (A = All, если спрашивает про замену)
+unzip vendor.zip
+
+# 3. Обязательно: патч под формат Composer 2 (исправляет "Undefined index: name")
+php scripts/patch-package-manifest.php
+
+# 4. Ключ и кэш
+php artisan key:generate
+php artisan config:cache
+```
+
+Без шага 3 при формате `installed.json` от Composer 2 будет ошибка в `php artisan key:generate`.
+
+---
+
 ## Composer на сервере
 
 **Не используйте** `composer.phar` из репозитория — он может быть повреждён при клонировании. На сервере используйте один из вариантов.
