@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   version="1.2"
+   preserveAspectRatio="none"
+   viewBox="0 -8.498349834983497 50 50"
+   class="ng-element"
+   data-id="5d74f8ce421645cd865a409a9ac7381a"
+   style="opacity: 1; mix-blend-mode: normal; fill: rgb(255, 211, 78); width: 28px; height: 28px"
+   id="svg10"
+   sodipodi:docname="contacts-email.svg"
+   inkscape:version="0.92.3 (2405546, 2018-03-11)">
+  <metadata
+     id="metadata16">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs14" />
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="828"
+     inkscape:window-height="480"
+     id="namedview12"
+     showgrid="false"
+     inkscape:zoom="4.72"
+     inkscape:cx="25"
+     inkscape:cy="25"
+     inkscape:window-x="0"
+     inkscape:window-y="27"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg10" />
+  <g
+     id="g8">
+    <g
+       id="g6">
+      <g
+         id="g4">
+        <path
+           d="M47,0H3C1.3,0,0,1.3,0,3v27c0,1.7,1.3,3,3,3h44c1.7,0,3-1.3,3-3V3C50,1.3,48.7,0,47,0z M25,17.8L3.7,2h42.6L25,17.8z     M17.1,14.4L2,29.6V3.2L17.1,14.4z M18.8,15.6l6.2,4.6l6.2-4.6L46.6,31H3.4L18.8,15.6z M32.9,14.4L48,3.2v26.3L32.9,14.4z"
+           style="fill: rgb(255, 211, 78);"
+           id="path2" />
+      </g>
+    </g>
+  </g>
+</svg>

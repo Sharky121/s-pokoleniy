@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+sitemap:https://s-pokoleniy.ru/sitemap.xml
+sitemap:https://s-pokoleniy.ru/sitemap-1.xml
+sitemap:https://s-pokoleniy.ru/sitemap-2.xml
+sitemap:https://s-pokoleniy.ru/sitemap-3.xml
+sitemap:https://s-pokoleniy.ru/sitemap-4.xml
+sitemap:https://s-pokoleniy.ru/sitemap-5.xml
+sitemap:https://s-pokoleniy.ru/sitemap-6.xml
+sitemap:https://s-pokoleniy.ru/sitemap-7.xml
+sitemap:https://s-pokoleniy.ru/sitemap-8.xml
+sitemap:https://s-pokoleniy.ru/sitemap-9.xml
+sitemap:https://s-pokoleniy.ru/sitemap-10.xml
+sitemap:https://s-pokoleniy.ru/sitemap-11.xml
+sitemap:https://s-pokoleniy.ru/sitemap-12.xml
+sitemap:https://s-pokoleniy.ru/sitemap-13.xml
+sitemap:https://s-pokoleniy.ru/sitemap-14.xml
+sitemap:https://s-pokoleniy.ru/sitemap-15.xml
+sitemap:https://s-pokoleniy.ru/sitemap-16.xml
+sitemap:https://s-pokoleniy.ru/sitemap-17.xml
+sitemap:https://s-pokoleniy.ru/sitemap-18.xml
+sitemap:https://s-pokoleniy.ru/sitemap-19.xml
+sitemap:https://s-pokoleniy.ru/sitemap-20.xml
