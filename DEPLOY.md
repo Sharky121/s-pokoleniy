@@ -1,80 +1,92 @@
-# Деплой на сервер
+# Перенос сайта на сервер (без Docker)
 
-## Вариант: распаковка vendor.zip (без composer на сервере)
+## 1. Что копировать / деплой через Git
 
-Если вы выкладываете уже собранный `vendor` архивом:
+- Размещение через **git**: склонируйте репозиторий на сервер и делайте `git pull` при обновлении. Загруженные картинки (новости, галереи и т.д.) лежат в `storage/app/public/vendor/cherry-site/upload/` и **уже добавлены в репозиторий** — при `git pull` они подтянутся на сервер.
+- **Один раз** закоммитьте папку `upload`, если ещё не коммитили:
+  ```bash
+  git add storage/app/public/vendor/cherry-site/upload/
+  git add storage/app/public/.gitignore
+  git commit -m "Добавить загруженные файлы админки в репозиторий"
+  git push
+  ```
+- Альтернатива без Git: копируйте проект целиком и **обязательно** папку `storage/app/public/vendor/cherry-site/upload/`.
+- **Можно не копировать** (на сервере заново поставить):
+  - `vendor/` — на сервере выполнить `composer install --no-dev`
+  - `node_modules/` — если не собираете фронт на сервере, можно не копировать
+- Файл **`.env`** на сервере создайте вручную или скопируйте и поправьте под прод (см. ниже).
 
-```bash
-# 1. Удалить старую папку vendor
-rm -rf vendor
-
-# 2. Распаковать архив (A = All, если спрашивает про замену)
-unzip vendor.zip
-
-# 3. Обязательно: патч под формат Composer 2 (исправляет "Undefined index: name")
-php scripts/patch-package-manifest.php
-
-# 4. Ключ и кэш
-php artisan key:generate
-php artisan config:cache
-```
-
-Без шага 3 при формате `installed.json` от Composer 2 будет ошибка в `php artisan key:generate`.
-
----
-
-## Composer на сервере
-
-**Не используйте** `composer.phar` из репозитория — он может быть повреждён при клонировании. На сервере используйте один из вариантов.
-
-### Вариант 1: Composer установлен в системе
+## 2. На сервере после копирования
 
 ```bash
-cd /home/p500271/www/s-pokoleniy.ru
-composer install --no-dev --optimize-autoloader
+cd /путь/к/s-pokoleniy.ru
+
+# Зависимости PHP (если vendor не копировали)
+composer install --no-dev
+
+# Симлинк для storage (без него /storage/... отдаёт 404)
+php artisan storage:link
+
+# Ассеты админки cherry-site (CSS, JS, шрифты) — если папку storage/ не копировали или она пустая
+php artisan vendor:publish --tag=cherry-site:assets --force
+php artisan vendor:publish --tag=cherry-site:upload --force
+
+# Права на запись (пользователь веб-сервера должен писать в storage и bootstrap/cache)
+chmod -R 775 storage bootstrap/cache
+# Если нужно: chown -R www-data:www-data storage bootstrap/cache
 ```
 
-### Вариант 2: Скачать Composer один раз в папку проекта
+**Если админка отдаёт 404 на все CSS/JS:** проверьте, что на сервере есть папка `storage/app/public/vendor/cherry-site/assets/` с файлами (css, js, fonts, img). Если её нет — выполните две команды `vendor:publish` выше и снова `php artisan storage:link`.
 
-```bash
-cd /home/p500271/www/s-pokoleniy.ru
-php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-php composer-setup.php
-php -r "unlink('composer-setup.php');"
-php composer.phar install --no-dev --optimize-autoloader
+**Если в разделе «Новости» (и в других разделах) нет картинок:** картинки лежат в `storage/app/public/vendor/cherry-site/upload/`. При деплое через Git эта папка подтягивается при `git pull`. Если деплой без Git — скопируйте папку `upload` на сервер в то же место.
+
+## 3. Настройка .env на сервере
+
+Проверьте/задайте:
+
+- `APP_ENV=production`
+- `APP_DEBUG=false`
+- `APP_URL=https://s-pokoleniy.ru` (или ваш домен)
+- `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` — данные БД на хостинге
+
+## 4. Веб-сервер: корень сайта
+
+**Document root** должен указывать на папку **`public`** проекта:
+
+- Путь к сайту: `/путь/к/s-pokoleniy.ru/public`
+
+Тогда запросы к `/storage/...` обрабатываются так: веб-сервер отдаёт файлы по симлинку `public/storage` и сам выставляет правильный Content-Type для CSS/JS. Отдельный роутер (`server.php`, `public/router.php`) на проде не нужен — они только для встроенного PHP-сервера локально.
+
+### Apache
+
+- Включён `mod_rewrite`.
+- В `public/.htaccess` уже есть правила перенаправления в `index.php`.
+- Для виртуального хоста: `DocumentRoot /путь/к/s-pokoleniy.ru/public`.
+
+### Nginx
+
+Пример для `location /`:
+
+```nginx
+root /путь/к/s-pokoleniy.ru/public;
+index index.php;
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+location ~ \.php$ {
+    fastcgi_pass unix:/var/run/php/php7.2-fpm.sock;  # или 127.0.0.1:9000
+    fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+    include fastcgi_params;
+}
 ```
 
-Дальше можно вызывать `php composer.phar` при необходимости или удалить старый повреждённый `composer.phar` и использовать только что скачанный.
+## 5. Краткий чеклист
 
-### Вариант 3: Composer в домашней директории (без прав в каталог сайта)
+- [ ] Скопирован проект, на сервере выполнен `composer install --no-dev`
+- [ ] Выполнен `php artisan storage:link`
+- [ ] Настроены права на `storage` и `bootstrap/cache`
+- [ ] В `.env` заданы продовые APP_URL, DB_*, APP_DEBUG=false
+- [ ] Document root веб-сервера = `.../public`
+- [ ] Миграции при необходимости: `php artisan migrate --force`
 
-```bash
-# Один раз
-php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-php composer-setup.php --install-dir=$HOME/bin
-php -r "unlink('composer-setup.php');"
-# В PATH добавить $HOME/bin
-
-cd /home/p500271/www/s-pokoleniy.ru
-composer install --no-dev --optimize-autoloader
-```
-
-После успешного `composer install`:
-
-```bash
-php artisan key:generate
-# и при необходимости: права на storage, bootstrap/cache, .env
-```
-
----
-
-## Недостающие картинки (404 на сайте)
-
-Если в логах браузера 404 для файлов вроде `MDA.jpg`, `1.jpeg`, `matushka_concert.jpg` и т.п., на сервере нет файлов в `storage/app/public/vendor/cherry-site/upload/`. Подставные картинки можно скачать так:
-
-```bash
-cd /home/p500271/www/s-pokoleniy.ru
-bash scripts/download-missing-from-list.sh scripts/storage-image-paths.txt
-```
-
-Скрипт создаёт каталоги и качает по одному примерному изображению с Wikimedia Commons только для тех путей, где файла ещё нет. Для повторного деплоя можно запускать снова — существующие файлы не перезаписываются.
+После этого сайт и админка (`/cherry-site/admin/login`) должны открываться; стили админки на проде отдаются веб-сервером из `public/storage` с корректным MIME.
