@@ -1,8 +1,8 @@
 <?php
 /**
- * Страница «Партнёры»: для каждого партнёра переходит по полю site, забирает логотип со страницы
- * (og:image, favicon, или img с классом/id «logo»), сохраняет в public/images, приводит к 400×400, пишет в cover.
- * Запуск: php scripts/partners-fill-covers.php [--all]
+ * Страница «Партнёры»: для каждого партнёра переходит по полю site, забирает именно логотип со страницы
+ * (приоритет: img с классом logo/brand, apple-touch-icon, icon, og:image, favicon.ico), сохраняет в public/images,
+ * приводит к 400×400, пишет в cover. Запуск: php scripts/partners-fill-covers.php [--all]
  */
 $base = dirname(__DIR__);
 require $base . '/vendor/autoload.php';
@@ -57,47 +57,154 @@ function resolveAbsoluteUrl(string $baseUrl, string $path): string
 }
 
 /**
- * Из HTML страницы извлекает URL логотипа: og:image, link icon/apple-touch-icon, img.logo, затем favicon.ico.
+ * Из HTML страницы извлекает URL именно логотипа (приоритет: img.logo в шапке, затем apple-touch-icon, icon, og:image, favicon).
  */
 function extractLogoUrlFromHtml(string $html, string $pageUrl): ?string
 {
-    $url = null;
-    if (preg_match('#<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']#i', $html, $m)) {
-        $url = trim(html_entity_decode($m[1]));
+    $decode = function ($s) {
+        return trim(html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    };
+    $resolve = function ($path) use ($pageUrl) {
+        return resolveAbsoluteUrl($pageUrl, $path);
+    };
+
+    $header = mb_substr($html, 0, 150000);
+
+    // 1. Картинка с логотипом в разметке (class/id: logo, brand, header-logo, site-logo, логотип и т.д.)
+    $logoImgPattern = '#<img[^>]+(?:class|id)=["\']([^"\']*?(?:logo|brand|header-logo|site-logo|логотип|logotype)[^"\']*)["\'][^>]+(?:src|data-src)=["\']([^"\']+)["\']#i';
+    if (preg_match($logoImgPattern, $header, $m)) {
+        $src = $decode($m[2]);
+        if (stripos($src, '.svg') === false) {
+            return $resolve($src);
+        }
     }
-    if (!$url && preg_match('#<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']#i', $html, $m)) {
-        $url = trim(html_entity_decode($m[1]));
+    $logoImgPattern2 = '#<img[^>]+(?:src|data-src)=["\']([^"\']+)["\'][^>]+(?:class|id)=["\']([^"\']*?(?:logo|brand|header-logo|site-logo|логотип)[^"\']*)["\']#i';
+    if (preg_match($logoImgPattern2, $header, $m)) {
+        $src = $decode($m[1]);
+        if (stripos($src, '.svg') === false) {
+            return $resolve($src);
+        }
     }
-    if ($url) {
-        return resolveAbsoluteUrl($pageUrl, $url);
-    }
-    $icons = [];
-    if (preg_match_all('#<link[^>]+(?:rel=["\'](?:apple-touch-icon|icon)[^"\']*["\']|href=["\']([^"\']+)["\'][^>]+rel=["\'](?:apple-touch-icon|icon))[^>]*(?:href=["\']([^"\']+)["\']|rel=["\'](?:apple-touch-icon|icon)[^"\']*["\'])[^>]*>#i', $html, $m)) {
-        foreach ($m[0] as $i => $tag) {
-            if (preg_match('#href=["\']([^"\']+)["\']#i', $tag, $href)) {
-                $icons[] = trim(html_entity_decode($href[1]));
+
+    // 2. Apple-touch-icon (обычно логотип 180x180)
+    if (preg_match_all('#<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\'](?:apple-touch-icon)[^"\']*["\'][^>]*>#i', $header, $m)) {
+        foreach ($m[1] as $href) {
+            $href = $decode($href);
+            if (stripos($href, '.svg') === false) {
+                return $resolve($href);
             }
         }
     }
-    if (preg_match_all('#<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\'](?:apple-touch-icon|icon)[^"\']*["\']#i', $html, $m)) {
+
+    // 3. link rel="icon" с размером (предпочтительно крупнее)
+    if (preg_match_all('#<link[^>]+rel=["\'](?:icon)[^"\']*["\'][^>]+href=["\']([^"\']+)["\'][^>]*>#i', $header, $m)) {
         foreach ($m[1] as $href) {
-            $icons[] = trim(html_entity_decode($href));
+            $href = $decode($href);
+            if (stripos($href, '.svg') === false) {
+                return $resolve($href);
+            }
         }
     }
-    foreach (array_unique($icons) as $icon) {
-        if (stripos($icon, '.svg') === false) {
-            return resolveAbsoluteUrl($pageUrl, $icon);
+    if (preg_match_all('#<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\'](?:icon)[^"\']*["\'][^>]*>#i', $header, $m)) {
+        foreach ($m[1] as $href) {
+            $href = $decode($href);
+            if (stripos($href, '.svg') === false) {
+                return $resolve($href);
+            }
         }
     }
-    if (preg_match('#<img[^>]+(?:class|id)=["\'][^"\']*logo[^"\']*["\'][^>]+src=["\']([^"\']+)["\']#i', $html, $m)) {
-        return resolveAbsoluteUrl($pageUrl, trim(html_entity_decode($m[1])));
+
+    // 4. og:image (часто превью страницы, но иногда логотип)
+    if (preg_match('#<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']#i', $header, $m)) {
+        return $resolve($decode($m[1]));
     }
-    if (preg_match('#<img[^>]+src=["\']([^"\']+)["\'][^>]+(?:class|id)=["\'][^"\']*logo[^"\']*["\']#i', $html, $m)) {
-        return resolveAbsoluteUrl($pageUrl, trim(html_entity_decode($m[1])));
+    if (preg_match('#<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']#i', $header, $m)) {
+        return $resolve($decode($m[1]));
     }
+
+    // 5. favicon.ico в последнюю очередь
     $parts = parse_url($pageUrl);
     $base = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '');
     return $base . '/favicon.ico';
+}
+
+/** Для МПДА используем официальный логотип Shape.svg (внутри встроен PNG). */
+const MDPA_LOGO_URL = 'https://mpda.ru/wp-content/themes/mda/img/Shape.svg';
+/** Для РГМ — логотип из шапки сайта (чистый SVG). */
+const RHM_LOGO_URL = 'https://rhm.agency/wp-content/themes/Rhm/assets/img/logoHeader.svg';
+
+/**
+ * Скачивает SVG по URL и извлекает встроенное растровое изображение (data:image/png;base64,...).
+ * Сохраняет декодированные байты в $filepath. Возвращает true при успехе.
+ */
+function downloadSvgWithEmbeddedImage(string $url, string $filepath, string $userAgent): bool
+{
+    $svg = fetchUrl($url, $userAgent, 25);
+    if ($svg === null || $svg === '') {
+        return false;
+    }
+    if (preg_match('#data:image/(png|jpe?g);base64,([A-Za-z0-9+/=]+)#', $svg, $m)) {
+        $raw = base64_decode($m[2], true);
+        if ($raw !== false && strlen($raw) >= 100) {
+            return file_put_contents($filepath, $raw) !== false;
+        }
+    }
+    return false;
+}
+
+/**
+ * Скачивает SVG (без встроенного растра) и конвертирует в растровый файл.
+ * Сначала пробует Imagick (если собран с librsvg), затем rsvg-convert или convert в системе.
+ */
+function downloadSvgAndConvertToRaster(string $url, string $filepath, string $userAgent): bool
+{
+    $svg = fetchUrl($url, $userAgent, 25);
+    if ($svg === null || $svg === '') {
+        return false;
+    }
+    $dir = dirname($filepath);
+    $tmpSvg = $dir . '/_tmp_' . uniqid() . '.svg';
+    $tmpPng = $dir . '/_tmp_' . uniqid() . '.png';
+    if (file_put_contents($tmpSvg, $svg) === false) {
+        return false;
+    }
+    $ok = false;
+
+    if (extension_loaded('imagick')) {
+        try {
+            $im = new \Imagick();
+            $im->setResolution(200, 200);
+            $im->readImage($tmpSvg);
+            $im->setImageFormat('png');
+            $im->writeImage($tmpPng);
+            $im->clear();
+            $im->destroy();
+            if (is_file($tmpPng) && filesize($tmpPng) >= 100) {
+                $ok = rename($tmpPng, $filepath);
+            }
+        } catch (\Throwable $e) {
+            // Imagick без поддержки SVG — пробуем консоль
+        }
+    }
+    if (!$ok && is_executable_available('rsvg-convert')) {
+        $out = [];
+        @exec('rsvg-convert -o ' . escapeshellarg($filepath) . ' ' . escapeshellarg($tmpSvg) . ' 2>&1', $out);
+        $ok = is_file($filepath) && filesize($filepath) >= 100;
+    }
+    if (!$ok && is_executable_available('convert')) {
+        $out = [];
+        @exec('convert ' . escapeshellarg($tmpSvg) . ' ' . escapeshellarg($filepath) . ' 2>&1', $out);
+        $ok = is_file($filepath) && filesize($filepath) >= 100;
+    }
+    @unlink($tmpSvg);
+    @unlink($tmpPng);
+    return $ok;
+}
+
+function is_executable_available(string $cmd): bool
+{
+    $path = trim(explode("\n", (string) @shell_exec('which ' . escapeshellarg($cmd) . ' 2>/dev/null'))[0]);
+    return $path !== '' && $path !== '0' && @is_executable($path);
 }
 
 function downloadToFile(string $url, string $filepath, string $userAgent): bool
@@ -198,12 +305,26 @@ foreach ($items as $item) {
         continue;
     }
 
-    if (stripos($logoUrl, '.svg') !== false) {
-        $failed[] = $item->id . ': ' . $item->title . ' (SVG логотип — конвертация не реализована)';
-        continue;
+    // Для МПДА и РГМ используем фиксированные URL логотипов
+    if (strpos($site, 'mpda.ru') !== false) {
+        $logoUrl = MDPA_LOGO_URL;
+    }
+    if (strpos($site, 'rhm.agency') !== false) {
+        $logoUrl = RHM_LOGO_URL;
     }
 
-    if (!downloadToFile($logoUrl, $filepath, $ua)) {
+    $downloaded = false;
+    if (stripos($logoUrl, '.svg') !== false) {
+        $downloaded = downloadSvgWithEmbeddedImage($logoUrl, $filepath, $ua);
+        if (!$downloaded) {
+            $downloaded = downloadSvgAndConvertToRaster($logoUrl, $filepath, $ua);
+        }
+        if (!$downloaded) {
+            $failed[] = $item->id . ': ' . $item->title . ' (SVG: нет встроенного растра и конвертация Imagick недоступна)';
+            continue;
+        }
+    }
+    if (!$downloaded && !downloadToFile($logoUrl, $filepath, $ua)) {
         $failed[] = $item->id . ': ' . $item->title . ' (ошибка загрузки изображения)';
         continue;
     }
