@@ -1,11 +1,11 @@
 <?php
 /**
  * Раздел «Поддержка РПЦ» (churches): по title ищет тематическую картинку (храм/церковь) в Wikimedia Commons,
- * сохраняет в public/images, пишет путь в cover в БД. Картинки не повторяются.
+ * сохраняет в public/images, приводит к размеру 800×600, пишет путь в cover в БД. Картинки не повторяются.
  * Принимаются только изображения с тематическими подписями (храм, church, orthodox и т.д.).
  * Запуск: php scripts/churches-fill-covers.php [--all]
  *   --all — обработать все записи (по умолчанию только с пустым cover)
- * Для надёжной загрузки с Commons лучше запускать на хосте (не в Docker): php scripts/churches-fill-covers.php --all
+ * Ресайз 800×600 требует GD с JPEG или Imagick. Иначе после скрипта выполните: bash scripts/churches-resize-covers.sh (нужен ImageMagick).
  */
 $base = dirname(__DIR__);
 require $base . '/vendor/autoload.php';
@@ -165,6 +165,26 @@ function coverFilename(int $id): string
     return "church-{$id}.jpg";
 }
 
+/** Единый размер обложек: 800×600, обрезка по центру (fit). */
+const COVER_WIDTH = 800;
+const COVER_HEIGHT = 600;
+
+/** Привести изображение к единому размеру 800×600 (обрезка по центру) и перезаписать файл. */
+function resizeToUniformSize(string $filepath): bool
+{
+    try {
+        $driver = extension_loaded('imagick') ? 'imagick' : 'gd';
+        $manager = new \Intervention\Image\ImageManager(['driver' => $driver]);
+        $img = $manager->make($filepath);
+        $img->fit(COVER_WIDTH, COVER_HEIGHT);
+        $img->encode('jpg', 88);
+        $img->save($filepath);
+        return true;
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
 $churches = \App\Models\Church::orderBy('id')->get(['id', 'title', 'cover']);
 if (!$processAll) {
     $churches = $churches->filter(function ($c) {
@@ -237,6 +257,8 @@ foreach ($churches as $church) {
         $failed[] = $church->id . ': ' . mb_substr($title, 0, 50);
         continue;
     }
+
+    resizeToUniformSize($filepath);
 
     $usedUrls[] = $usedUrl;
     $coverPath = '/images/' . $filename;

@@ -1,0 +1,36 @@
+#!/bin/bash
+# Приводит public/images/church-*.jpg к размеру 800×600 (обрезка по центру).
+# Использует ImageMagick (convert) или на macOS встроенный sips.
+# Запуск из корня проекта: bash scripts/churches-resize-covers.sh
+
+set -e
+BASE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$BASE/public/images"
+W=800
+H=600
+
+resize_with_convert() {
+  local f="$1"
+  local tmp="${f}.tmp"
+  convert "$f" -resize "${W}x${H}^" -gravity center -extent "${W}x${H}" "$tmp" && mv -f "$tmp" "$f"
+}
+
+resize_with_sips() {
+  local f="$1"
+  sips -Z "$W" "$f" --out "$f" >/dev/null 2>&1
+  sips --cropToHeightWidth "$H" "$W" "$f" >/dev/null 2>&1
+  return 0
+}
+
+for f in church-*.jpg; do
+  [ -f "$f" ] || continue
+  if command -v convert >/dev/null 2>&1; then
+    resize_with_convert "$f" && echo "OK: $f"
+  elif command -v sips >/dev/null 2>&1; then
+    resize_with_sips "$f" && echo "OK: $f"
+  else
+    echo "Установите ImageMagick (convert) или используйте macOS (sips)."
+    exit 1
+  fi
+done
+echo "Готово."
