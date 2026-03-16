@@ -68,9 +68,11 @@
         "post-create-project-cmd": [
             "@php artisan key:generate --ansi"
         ],
-        "fresh-db": "php artisan migrate:rollback --step=100 && php artisan migrate --step && php artisan db:seed"
+        "fresh-db": "php artisan migrate:rollback --step=100 && php artisan migrate --step && php artisan db:seed",
+        "serve": "php -S localhost:8080 -t public public/router.php"
     },
     "scripts-descriptions": {
-        "fresh-db": "Обновляет БД"
+        "fresh-db": "Обновляет БД",
+        "serve": "Запуск встроенного PHP-сервера с роутером (стили админки отдаются с правильным MIME)"
     }
 }

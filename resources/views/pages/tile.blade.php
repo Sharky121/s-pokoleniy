@@ -33,7 +33,7 @@
         <var data-gallery-id="{{ $gallery->key }}" style="display:none !important">
             [
             @foreach ($gallery->photos()->orderBy('position')->get() as $photo)
-                {"url":"{{ $photo->path }}","preview":"{{ cherry_thumb($photo->path) }}"}@if (!$loop->last),@endif
+                {"url":"{{ '/' . ltrim($photo->path ?? '', '/') }}","preview":"{{ '/' . ltrim($photo->path ?? '', '/') }}"}@if (!$loop->last),@endif
             @endforeach
             ]
         </var>
@@ -51,7 +51,7 @@
             @foreach ($currentPage->galleries as $gallery)
                 <div class="images">
                     @foreach ($gallery->photos()->orderBy('position')->get() as $i => $photo)
-                        <a href="javascript:void(0)" data-gallery="{{ $gallery->key }}" data-index="{{ $i }}" style="background-image:url('{{ cherry_thumb($photo->path) }}')">
+                        <a href="javascript:void(0)" data-gallery="{{ $gallery->key }}" data-index="{{ $i }}" style="background-image:url('{{ '/' . ltrim($photo->path ?? '', '/') }}')">
                             <div class="overlay">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14"/><path d="M8 16h16z M16 8v16z"/></svg>
                             </div>
@@ -65,7 +65,7 @@
             <?php $currentPageId = $pageId ?? $item->page_id; ?>
 
             <a href="{{ route("pages.{$currentPageId}", [$item->id, str_slug($sub($item->title))]) }}" class="block block__third">
-                <img src="{{ $item->cover }}" alt="">
+                <img src="{{ '/' . ltrim($item->cover ?? '', '/') }}" alt="">
                 <div>
                     <h2>{!! $sub($item->title) !!}</h2>
                     <small>{!! $item->date->monthName . ' ' . $item->date->year !!}</small>

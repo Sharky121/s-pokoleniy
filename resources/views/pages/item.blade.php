@@ -48,7 +48,7 @@
         <var data-gallery-id="{{ $gallery->key }}" style="display:none !important">
             [
             @foreach ($gallery->photos()->orderBy('position')->get() as $photo)
-                {"url":"{{ $photo->path }}","preview":"{{ cherry_thumb($photo->path) }}"}@if (!$loop->last),@endif
+                {"url":"{{ '/' . ltrim($photo->path ?? '', '/') }}","preview":"{{ '/' . ltrim($photo->path ?? '', '/') }}"}@if (!$loop->last),@endif
             @endforeach
             ]
         </var>
@@ -70,7 +70,7 @@
         @if($item->photos->count() > 1)
             <div class="block block__full-width" data-simple-slider>
                 @foreach($item->photos->sortBy('position') as $photo)
-                    <div style="background-image:url('{{ $photo->path }}')" data-ss-image @if ($loop->first) class="current" @endif></div>
+                    <div style="background-image:url('{{ '/' . ltrim($photo->path ?? '', '/') }}')" data-ss-image @if ($loop->first) class="current" @endif></div>
                 @endforeach
                 <div class="white-line"></div>
                 <div class="image-text">
@@ -83,7 +83,7 @@
         @else
             <div class="block block__full-width block__no-padding">
                 <?php $photoPath = data_get($item, 'photos.0.path', $item->cover); ?>
-                <img src="{{ $photoPath }}" alt="">
+                <img src="{{ '/' . ltrim($photoPath ?? '', '/') }}" alt="">
             </div>
         @endif
 
@@ -95,7 +95,7 @@
             <?php $currentPageId = $pageId ?? $previous->page_id; ?>
 
             <a href="{{ route("pages.{$currentPageId}", [$previous->id, str_slug($sub($previous->title))]) }}" class="block block__half">
-                <img src="{{ cherry_thumb($previous->cover) }}" alt="">
+                <img src="{{ '/' . ltrim($previous->cover ?? '', '/') }}" alt="">
                 <div>
                     <div class="case-nav__title">Предыдущий проект</div>
                     <div class="case-nav__desc">{!! $sub($previous->title) !!}</div>
@@ -114,7 +114,7 @@
             <?php $currentPageId = $pageId ?? $next->page_id; ?>
 
             <a href="{{ route("pages.{$currentPageId}", [$next->id, str_slug($sub($next->title))]) }}" class="block block__half">
-                <img src="{{ cherry_thumb($next->cover) }}" alt="">
+                <img src="{{ '/' . ltrim($next->cover ?? '', '/') }}" alt="">
                 <div>
                     <div class="case-nav__title">Следующий проект</div>
                     <div class="case-nav__desc">{!! $sub($next->title) !!}</div>

@@ -9,7 +9,7 @@
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
-    # Статика из public/ (когда document root = корень проекта)
+    # Статика из public/ (когда document root = корень проекта). /storage/* отдаёт Laravel (routes/web.php)
     RewriteRule ^(css|js|images|packages|docs)/(.*)$ public/$1/$2 [L]
 
     # Redirect Trailing Slashes If Not A Folder...

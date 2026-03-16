@@ -65,3 +65,16 @@ composer install --no-dev --optimize-autoloader
 php artisan key:generate
 # и при необходимости: права на storage, bootstrap/cache, .env
 ```
+
+---
+
+## Недостающие картинки (404 на сайте)
+
+Если в логах браузера 404 для файлов вроде `MDA.jpg`, `1.jpeg`, `matushka_concert.jpg` и т.п., на сервере нет файлов в `storage/app/public/vendor/cherry-site/upload/`. Подставные картинки можно скачать так:
+
+```bash
+cd /home/p500271/www/s-pokoleniy.ru
+bash scripts/download-missing-from-list.sh scripts/storage-image-paths.txt
+```
+
+Скрипт создаёт каталоги и качает по одному примерному изображению с Wikimedia Commons только для тех путей, где файла ещё нет. Для повторного деплоя можно запускать снова — существующие файлы не перезаписываются.
