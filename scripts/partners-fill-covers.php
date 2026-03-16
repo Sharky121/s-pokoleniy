@@ -1,8 +1,8 @@
 <?php
 /**
- * Страница «Партнёры»: по title ищет логотип организации в Wikimedia Commons,
- * сохраняет в public/images, приводит к 400×400 (квадрат для логотипов), пишет путь в cover в БД.
- * Картинки не повторяются. Запуск: php scripts/partners-fill-covers.php [--all]
+ * Страница «Партнёры»: для каждого партнёра переходит по полю site, забирает логотип со страницы
+ * (og:image, favicon, или img с классом/id «logo»), сохраняет в public/images, приводит к 400×400, пишет в cover.
+ * Запуск: php scripts/partners-fill-covers.php [--all]
  */
 $base = dirname(__DIR__);
 require $base . '/vendor/autoload.php';
@@ -12,112 +12,115 @@ $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 $imagesDir = $base . '/public/images';
 $processAll = in_array('--all', array_slice($argv, 1), true);
 
-function isLogoOrEmblem(string $pageTitle): bool
+$ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+function fetchUrl(string $url, string $userAgent, int $timeout = 15): ?string
 {
-    $lower = mb_strtolower($pageTitle);
-    $thematic = [
-        'logo', 'logos', 'логотип', 'emblem', 'эмблема', 'symbol', 'символ', 'brand', 'бренд',
-        'badge', 'значок', 'icon', 'иконка', 'seal', 'печать', 'coat of arms', 'герб',
-    ];
-    foreach ($thematic as $keyword) {
-        if (mb_strpos($lower, $keyword) !== false) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function findCommonsLogoByTitle(string $title, array &$usedUrls): ?string
-{
-    $query = trim(preg_replace('/\s+/', ' ', $title));
-    $searchQueries = [];
-    if ($query !== '') {
-        $searchQueries[] = $query . ' logo';
-        $searchQueries[] = 'logo ' . $query;
-        $searchQueries[] = $query . ' emblem';
-        $searchQueries[] = $query;
-    }
-    $searchQueries[] = 'organization logo';
-    $searchQueries[] = 'partnership logo';
-
-    $ctx = stream_context_create([
-        'http' => ['timeout' => 15, 'user_agent' => 'Mozilla/5.0 (compatible; SvyazPokolenij/1.0; +https://s-pokoleniy.ru)'],
-    ]);
-    $usedSet = array_flip($usedUrls);
-
-    foreach ($searchQueries as $gsrsearch) {
-        $apiUrl = 'https://commons.wikimedia.org/w/api.php?' . http_build_query([
-            'action' => 'query',
-            'generator' => 'search',
-            'gsrnamespace' => 6,
-            'gsrsearch' => $gsrsearch,
-            'gsrlimit' => 40,
-            'prop' => 'imageinfo',
-            'iiprop' => 'url|mime',
-            'iiurlwidth' => 800,
-            'format' => 'json',
-        ]);
-        $json = @file_get_contents($apiUrl, false, $ctx);
-        if ($json === false) {
-            continue;
-        }
-        $data = json_decode($json, true);
-        if (empty($data['query']['pages'])) {
-            continue;
-        }
-        foreach ($data['query']['pages'] as $page) {
-            $pageTitle = $page['title'] ?? '';
-            if (!isLogoOrEmblem($pageTitle)) {
-                continue;
-            }
-            $info = $page['imageinfo'][0] ?? null;
-            if (!$info) {
-                continue;
-            }
-            $mime = $info['mime'] ?? '';
-            $url = $info['thumburl'] ?? $info['url'] ?? null;
-            if ($url && !isset($usedSet[$url]) && (stripos($mime, 'jpeg') !== false || stripos($mime, 'jpg') !== false || stripos($mime, 'png') !== false)) {
-                return $url;
-            }
-        }
-    }
-    return null;
-}
-
-$partnersFallbackUrls = [
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Handshake_%28Workshop_Cologne_2006%29.jpg/800px-Handshake_%28Workshop_Cologne_2006%29.jpg',
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Partnership_handshake.jpg/800px-Partnership_handshake.jpg',
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/European_flag_protocol.jpg/800px-European_flag_protocol.jpg',
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Handshake_agreement.jpg/800px-Handshake_agreement.jpg',
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Partnership_collaboration.jpg/800px-Partnership_collaboration.jpg',
-];
-
-function downloadToFile(string $url, string $filepath): bool
-{
-    $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    $referer = 'https://commons.wikimedia.org/';
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_USERAGENT => $ua,
-            CURLOPT_HTTPHEADER => ["Referer: $referer"],
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_USERAGENT => $userAgent,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        return ($code >= 200 && $code < 400 && $body !== false) ? $body : null;
+    }
+    $ctx = stream_context_create([
+        'http' => ['timeout' => $timeout, 'user_agent' => $userAgent],
+    ]);
+    $body = @file_get_contents($url, false, $ctx);
+    return $body !== false ? $body : null;
+}
+
+function resolveAbsoluteUrl(string $baseUrl, string $path): string
+{
+    $path = trim($path);
+    if (preg_match('#^https?://#i', $path)) {
+        return $path;
+    }
+    $parts = parse_url($baseUrl);
+    $scheme = $parts['scheme'] ?? 'https';
+    $host = $parts['host'] ?? '';
+    $basePath = isset($parts['path']) ? preg_replace('#/[^/]*$#', '/', $parts['path']) : '/';
+    if (strpos($path, '//') === 0) {
+        return $scheme . ':' . $path;
+    }
+    if (strpos($path, '/') === 0) {
+        return $scheme . '://' . $host . $path;
+    }
+    return $scheme . '://' . $host . $basePath . ltrim($path, '/');
+}
+
+/**
+ * Из HTML страницы извлекает URL логотипа: og:image, link icon/apple-touch-icon, img.logo, затем favicon.ico.
+ */
+function extractLogoUrlFromHtml(string $html, string $pageUrl): ?string
+{
+    $url = null;
+    if (preg_match('#<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']#i', $html, $m)) {
+        $url = trim(html_entity_decode($m[1]));
+    }
+    if (!$url && preg_match('#<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']#i', $html, $m)) {
+        $url = trim(html_entity_decode($m[1]));
+    }
+    if ($url) {
+        return resolveAbsoluteUrl($pageUrl, $url);
+    }
+    $icons = [];
+    if (preg_match_all('#<link[^>]+(?:rel=["\'](?:apple-touch-icon|icon)[^"\']*["\']|href=["\']([^"\']+)["\'][^>]+rel=["\'](?:apple-touch-icon|icon))[^>]*(?:href=["\']([^"\']+)["\']|rel=["\'](?:apple-touch-icon|icon)[^"\']*["\'])[^>]*>#i', $html, $m)) {
+        foreach ($m[0] as $i => $tag) {
+            if (preg_match('#href=["\']([^"\']+)["\']#i', $tag, $href)) {
+                $icons[] = trim(html_entity_decode($href[1]));
+            }
+        }
+    }
+    if (preg_match_all('#<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\'](?:apple-touch-icon|icon)[^"\']*["\']#i', $html, $m)) {
+        foreach ($m[1] as $href) {
+            $icons[] = trim(html_entity_decode($href));
+        }
+    }
+    foreach (array_unique($icons) as $icon) {
+        if (stripos($icon, '.svg') === false) {
+            return resolveAbsoluteUrl($pageUrl, $icon);
+        }
+    }
+    if (preg_match('#<img[^>]+(?:class|id)=["\'][^"\']*logo[^"\']*["\'][^>]+src=["\']([^"\']+)["\']#i', $html, $m)) {
+        return resolveAbsoluteUrl($pageUrl, trim(html_entity_decode($m[1])));
+    }
+    if (preg_match('#<img[^>]+src=["\']([^"\']+)["\'][^>]+(?:class|id)=["\'][^"\']*logo[^"\']*["\']#i', $html, $m)) {
+        return resolveAbsoluteUrl($pageUrl, trim(html_entity_decode($m[1])));
+    }
+    $parts = parse_url($pageUrl);
+    $base = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '');
+    return $base . '/favicon.ico';
+}
+
+function downloadToFile(string $url, string $filepath, string $userAgent): bool
+{
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 25,
+            CURLOPT_USERAGENT => $userAgent,
             CURLOPT_SSL_VERIFYPEER => true,
         ]);
         $data = curl_exec($ch);
         $err = curl_errno($ch);
         curl_close($ch);
-        if ($err === 0 && $data !== false && strlen($data) >= 1000) {
+        if ($err === 0 && $data !== false && strlen($data) >= 100) {
             return file_put_contents($filepath, $data) !== false;
         }
     }
-    $ctx = stream_context_create([
-        'http' => ['timeout' => 25, 'user_agent' => $ua, 'header' => "Referer: $referer"],
-    ]);
+    $ctx = stream_context_create(['http' => ['timeout' => 25, 'user_agent' => $userAgent]]);
     $data = @file_get_contents($url, false, $ctx);
-    if ($data === false || strlen($data) < 1000) {
+    if ($data === false || strlen($data) < 100) {
         return false;
     }
     return file_put_contents($filepath, $data) !== false;
@@ -145,15 +148,19 @@ function resizeToUniformSize(string $filepath): bool
     }
 }
 
-$items = \App\Models\Partner::orderBy('id')->get(['id', 'title', 'cover']);
+$items = \App\Models\Partner::orderBy('id')->get(['id', 'title', 'site', 'cover']);
 if (!$processAll) {
     $items = $items->filter(function ($c) {
         return empty($c->cover) || trim($c->cover) === '';
     });
 }
 
+$items = $items->filter(function ($c) {
+    return !empty(trim($c->site ?? ''));
+});
+
 if ($items->isEmpty()) {
-    echo "Нет записей для обработки (используйте --all для обработки всех).\n";
+    echo "Нет партнёров с заполненным site для обработки (или используйте --all).\n";
     exit(0);
 }
 
@@ -161,81 +168,61 @@ if (!is_dir($imagesDir)) {
     mkdir($imagesDir, 0755, true);
 }
 
-$usedUrls = [];
 $updated = [];
 $failed = [];
 
 foreach ($items as $item) {
-    $title = $item->title ?? '';
-    $placehold = null;
-    $url = findCommonsLogoByTitle($title, $usedUrls);
-    if (!$url) {
-        $usedSet = array_flip($usedUrls);
-        foreach ($partnersFallbackUrls as $fb) {
-            if (!isset($usedSet[$fb])) {
-                $url = $fb;
-                break;
-            }
+    $site = trim($item->site);
+    if (strpos($site, 'http') !== 0) {
+        $site = 'https://' . $site;
+    }
+    $filename = coverFilename($item->id);
+    $filepath = $imagesDir . '/' . $filename;
+
+    $html = fetchUrl($site, $ua);
+    if (!$html && strpos($site, 'https://') === 0) {
+        $siteHttp = 'http://' . substr($site, 8);
+        $html = fetchUrl($siteHttp, $ua);
+        if ($html) {
+            $site = $siteHttp;
         }
     }
-    if (!$url) {
-        $failed[] = $item->id . ': ' . mb_substr($title, 0, 50);
+    if (!$html) {
+        $failed[] = $item->id . ': ' . $item->title . ' (не удалось загрузить страницу)';
         continue;
     }
 
-    $filename = coverFilename($item->id);
-    $filepath = $imagesDir . '/' . $filename;
-    $downloaded = false;
-    $usedUrl = null;
-    while ($url) {
-        if (downloadToFile($url, $filepath)) {
-            $downloaded = true;
-            $usedUrl = $url;
-            break;
-        }
-        $usedUrls[] = $url;
-        $url = null;
-        $usedSet = array_flip($usedUrls);
-        foreach ($partnersFallbackUrls as $fb) {
-            if (!isset($usedSet[$fb])) {
-                $url = $fb;
-                break;
-            }
-        }
+    $logoUrl = extractLogoUrlFromHtml($html, $site);
+    if (!$logoUrl) {
+        $failed[] = $item->id . ': ' . $item->title . ' (логотип на странице не найден)';
+        continue;
     }
 
-    if (!$downloaded) {
-        $placehold = 'https://placehold.co/400x400.jpg?text=' . rawurlencode(mb_substr($title, 0, 20));
-        if (downloadToFile($placehold, $filepath)) {
-            $downloaded = true;
-            $usedUrl = $placehold;
-            echo "OK (placeholder): id={$item->id} " . mb_substr($title, 0, 45) . " → /images/{$filename}\n";
-        }
+    if (stripos($logoUrl, '.svg') !== false) {
+        $failed[] = $item->id . ': ' . $item->title . ' (SVG логотип — конвертация не реализована)';
+        continue;
     }
 
-    if (!$downloaded) {
-        $failed[] = $item->id . ': ' . mb_substr($title, 0, 50);
+    if (!downloadToFile($logoUrl, $filepath, $ua)) {
+        $failed[] = $item->id . ': ' . $item->title . ' (ошибка загрузки изображения)';
         continue;
     }
 
     resizeToUniformSize($filepath);
 
-    $usedUrls[] = $usedUrl;
     $coverPath = '/images/' . $filename;
     $item->cover = $coverPath;
     $item->save();
     $updated[] = $item->id . ' — ' . $coverPath;
-    if ($placehold === null) {
-        echo "OK: id={$item->id} " . mb_substr($title, 0, 45) . " → {$coverPath}\n";
-    }
+    echo "OK: id={$item->id} " . mb_substr($item->title, 0, 45) . " ← {$site}\n";
 }
 
 if (!empty($failed)) {
-    echo "\nНе удалось: " . implode("\n  ", $failed) . "\n";
+    echo "\nНе удалось:\n  " . implode("\n  ", $failed) . "\n";
 }
 
 echo "\nОбновлено записей: " . count($updated) . "\n";
 
 if (count($updated) > 0) {
-    echo "Добавьте в git:\n  git add public/images/partner-*.jpg scripts/partners-fill-covers.php\n  git commit -m \"Логотипы партнёров\"\n";
+    echo "Добавьте в git:\n  git add public/images/partner-*.jpg scripts/partners-fill-covers.php\n  git commit -m \"Логотипы партнёров с сайтов\"\n";
 }
