@@ -154,9 +154,9 @@ function downloadSvgWithEmbeddedImage(string $url, string $filepath, string $use
 
 /**
  * Скачивает SVG (без встроенного растра) и конвертирует в растровый файл.
- * Сначала пробует Imagick (если собран с librsvg), затем rsvg-convert или convert в системе.
+ * $backgroundColor: например 'white' для белого фона (rsvg-convert --background-color).
  */
-function downloadSvgAndConvertToRaster(string $url, string $filepath, string $userAgent): bool
+function downloadSvgAndConvertToRaster(string $url, string $filepath, string $userAgent, ?string $backgroundColor = null): bool
 {
     $svg = fetchUrl($url, $userAgent, 25);
     if ($svg === null || $svg === '') {
@@ -176,6 +176,10 @@ function downloadSvgAndConvertToRaster(string $url, string $filepath, string $us
             $im->setResolution(200, 200);
             $im->readImage($tmpSvg);
             $im->setImageFormat('png');
+            if ($backgroundColor !== null && $backgroundColor !== '') {
+                $im->setImageBackgroundColor($backgroundColor);
+                $im = $im->flattenImages();
+            }
             $im->writeImage($tmpPng);
             $im->clear();
             $im->destroy();
@@ -187,13 +191,15 @@ function downloadSvgAndConvertToRaster(string $url, string $filepath, string $us
         }
     }
     if (!$ok && is_executable_available('rsvg-convert')) {
+        $bg = ($backgroundColor !== null && $backgroundColor !== '') ? ' --background-color=' . escapeshellarg($backgroundColor) : '';
         $out = [];
-        @exec('rsvg-convert -o ' . escapeshellarg($filepath) . ' ' . escapeshellarg($tmpSvg) . ' 2>&1', $out);
+        @exec('rsvg-convert' . $bg . ' -o ' . escapeshellarg($filepath) . ' ' . escapeshellarg($tmpSvg) . ' 2>&1', $out);
         $ok = is_file($filepath) && filesize($filepath) >= 100;
     }
     if (!$ok && is_executable_available('convert')) {
         $out = [];
-        @exec('convert ' . escapeshellarg($tmpSvg) . ' ' . escapeshellarg($filepath) . ' 2>&1', $out);
+        $bg = ($backgroundColor !== null && $backgroundColor !== '') ? ' -background ' . escapeshellarg($backgroundColor) . ' -flatten' : '';
+        @exec('convert ' . escapeshellarg($tmpSvg) . $bg . ' ' . escapeshellarg($filepath) . ' 2>&1', $out);
         $ok = is_file($filepath) && filesize($filepath) >= 100;
     }
     @unlink($tmpSvg);
@@ -233,21 +239,25 @@ function downloadToFile(string $url, string $filepath, string $userAgent): bool
     return file_put_contents($filepath, $data) !== false;
 }
 
-function coverFilename(int $id): string
+function coverFilename(int $id, string $ext = 'jpg'): string
 {
-    return "partner-{$id}.jpg";
+    return "partner-{$id}.{$ext}";
 }
 
 const LOGO_SIZE = 400;
 
-function resizeToUniformSize(string $filepath): bool
+function resizeToUniformSize(string $filepath, string $format = 'jpg'): bool
 {
     try {
         $driver = extension_loaded('imagick') ? 'imagick' : 'gd';
         $manager = new \Intervention\Image\ImageManager(['driver' => $driver]);
         $img = $manager->make($filepath);
         $img->fit(LOGO_SIZE, LOGO_SIZE);
-        $img->encode('jpg', 88);
+        if (strtolower($format) === 'png') {
+            $img->encode('png');
+        } else {
+            $img->encode('jpg', 88);
+        }
         $img->save($filepath);
         return true;
     } catch (\Throwable $e) {
@@ -283,7 +293,9 @@ foreach ($items as $item) {
     if (strpos($site, 'http') !== 0) {
         $site = 'https://' . $site;
     }
-    $filename = coverFilename($item->id);
+    $isRhm = (strpos($site, 'rhm.agency') !== false);
+    $ext = $isRhm ? 'png' : 'jpg';
+    $filename = coverFilename($item->id, $ext);
     $filepath = $imagesDir . '/' . $filename;
 
     $html = fetchUrl($site, $ua);
@@ -317,7 +329,7 @@ foreach ($items as $item) {
     if (stripos($logoUrl, '.svg') !== false) {
         $downloaded = downloadSvgWithEmbeddedImage($logoUrl, $filepath, $ua);
         if (!$downloaded) {
-            $downloaded = downloadSvgAndConvertToRaster($logoUrl, $filepath, $ua);
+            $downloaded = downloadSvgAndConvertToRaster($logoUrl, $filepath, $ua, $isRhm ? 'white' : null);
         }
         if (!$downloaded) {
             $failed[] = $item->id . ': ' . $item->title . ' (SVG: нет встроенного растра и конвертация Imagick недоступна)';
@@ -329,7 +341,14 @@ foreach ($items as $item) {
         continue;
     }
 
-    resizeToUniformSize($filepath);
+    resizeToUniformSize($filepath, $ext);
+
+    if ($isRhm) {
+        $oldJpg = $imagesDir . '/' . coverFilename($item->id, 'jpg');
+        if (is_file($oldJpg)) {
+            @unlink($oldJpg);
+        }
+    }
 
     $coverPath = '/images/' . $filename;
     $item->cover = $coverPath;
@@ -345,5 +364,5 @@ if (!empty($failed)) {
 echo "\nОбновлено записей: " . count($updated) . "\n";
 
 if (count($updated) > 0) {
-    echo "Добавьте в git:\n  git add public/images/partner-*.jpg scripts/partners-fill-covers.php\n  git commit -m \"Логотипы партнёров с сайтов\"\n";
+    echo "Добавьте в git:\n  git add public/images/partner-*.* scripts/partners-fill-covers.php\n  git commit -m \"Логотипы партнёров с сайтов\"\n";
 }
