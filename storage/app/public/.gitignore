@@ -1,2 +1,7 @@
 *
 !.gitignore
+# Загруженные файлы админки (новости, галереи и т.д.) — переносим через git
+!vendor/
+!vendor/cherry-site/
+!vendor/cherry-site/upload/
+!vendor/cherry-site/upload/**
